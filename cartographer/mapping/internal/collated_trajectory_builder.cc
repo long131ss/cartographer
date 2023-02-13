@@ -50,7 +50,9 @@ CollatedTrajectoryBuilder::CollatedTrajectoryBuilder(
       continue;
     }
     expected_sensor_id_strings.insert(sensor_id.id);
+    is_collated_sensor_[sensor_id.id] = true;
   }
+  //sensor_collator_里面每一种传感器数据对应一个队列
   sensor_collator_->AddTrajectory(
       trajectory_id, expected_sensor_id_strings,
       [this](const std::string& sensor_id, std::unique_ptr<sensor::Data> data) {
@@ -84,6 +86,22 @@ void CollatedTrajectoryBuilder::HandleCollatedSensorData(
   }
 
   data->AddToTrajectoryBuilder(wrapped_trajectory_builder_.get());
+}
+
+void CollatedTrajectoryBuilder::PauseCollating(const std::string& sensor_id) {
+  CHECK(is_collated_sensor_[sensor_id]);
+  is_collated_sensor_[sensor_id] = false;
+  sensor_collator_->PauseCollating(trajectory_id_, sensor_id);
+}
+
+void CollatedTrajectoryBuilder::ResumeCollating(const std::string& sensor_id) {
+  CHECK(!is_collated_sensor_[sensor_id]);
+  is_collated_sensor_[sensor_id] = true;
+  sensor_collator_->ResumeCollating(
+        trajectory_id_, sensor_id,
+        [this](const std::string& sensor_id, std::unique_ptr<sensor::Data> data) {
+          HandleCollatedSensorData(sensor_id, std::move(data));
+  });
 }
 
 }  // namespace mapping

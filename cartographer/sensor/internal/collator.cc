@@ -42,13 +42,42 @@ void Collator::FinishTrajectory(const int trajectory_id) {
 void Collator::AddSensorData(const int trajectory_id,
                              std::unique_ptr<Data> data) {
   QueueKey queue_key{trajectory_id, data->GetSensorId()};
-  queue_.Add(std::move(queue_key), std::move(data));
+  //常左值引用绑定到右值
+  queue_.Add(std::move(queue_key), std::move(data)); 
 }
 
 void Collator::Flush() { queue_.Flush(); }
 
 absl::optional<int> Collator::GetBlockingTrajectoryId() const {
   return absl::optional<int>(queue_.GetBlocker().trajectory_id);
+}
+
+void Collator::PauseCollating(const int trajectory_id,
+                              const std::string& sensor_id) {
+  LOG(INFO) << "Pausing to collate sensor: " << trajectory_id << ", " << sensor_id;
+  QueueKey queue_key{trajectory_id, sensor_id};
+  queue_.MarkQueueAsFinished(queue_key);
+  const auto it =
+      std::find(queue_keys_[trajectory_id].begin(),
+                queue_keys_[trajectory_id].end(), queue_key);
+  CHECK(it != queue_keys_[trajectory_id].end());
+  queue_keys_[trajectory_id].erase(it);
+}
+
+void Collator::ResumeCollating(const int trajectory_id,
+                               const std::string& sensor_id,
+                               const Callback& callback) {
+  LOG(INFO) << "Resuming to collate sensor: " << trajectory_id << ", " << sensor_id;
+  QueueKey queue_key{trajectory_id, sensor_id};
+  queue_.AddQueue(queue_key,
+                  [callback, sensor_id](std::unique_ptr<Data> data) {
+                    callback(sensor_id, std::move(data));
+                  });
+  const auto it =
+      std::find(queue_keys_[trajectory_id].begin(),
+                queue_keys_[trajectory_id].end(), queue_key);
+  CHECK(it == queue_keys_[trajectory_id].end());
+  queue_keys_[trajectory_id].push_back(queue_key);
 }
 
 }  // namespace sensor
